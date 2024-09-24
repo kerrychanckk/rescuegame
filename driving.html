@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Smooth Driving Game</title>
+    <title>Exciting Driving Game</title>
     <style>
         body {
             margin: 0;
@@ -31,6 +31,7 @@
             background-image: url('control.png');
             background-size: contain;
             background-repeat: no-repeat;
+            z-index: 10;
         }
         .obstacle {
             width: 40px;
@@ -40,12 +41,22 @@
             background-size: contain;
             background-repeat: no-repeat;
         }
-        #score {
+        .powerup {
+            width: 30px;
+            height: 30px;
             position: absolute;
-            top: 10px;
-            left: 10px;
-            color: white;
+            background-color: gold;
+            border-radius: 50%;
         }
+        #score, #level, #multiplier, #highScore {
+            position: absolute;
+            color: white;
+            font-size: 14px;
+        }
+        #score { top: 10px; left: 10px; }
+        #level { top: 30px; left: 10px; }
+        #multiplier { top: 50px; left: 10px; }
+        #highScore { top: 10px; right: 10px; }
         #gameOver {
             display: none;
             position: absolute;
@@ -62,6 +73,9 @@
     <div id="gameContainer">
         <div id="car"></div>
         <div id="score">Score: 0</div>
+        <div id="level">Level: 1</div>
+        <div id="multiplier">Multiplier: x1</div>
+        <div id="highScore">High Score: 0</div>
         <div id="gameOver">
             Game Over<br>
             <button onclick="restartGame()">Restart</button>
@@ -72,13 +86,21 @@
         const car = document.getElementById('car');
         const gameContainer = document.getElementById('gameContainer');
         const scoreElement = document.getElementById('score');
+        const levelElement = document.getElementById('level');
+        const multiplierElement = document.getElementById('multiplier');
+        const highScoreElement = document.getElementById('highScore');
         const gameOverElement = document.getElementById('gameOver');
 
         let carPosition = 130;
         let score = 0;
+        let highScore = 0;
+        let level = 1;
+        let multiplier = 1;
+        let consecutiveAvoids = 0;
         let gameRunning = true;
         let leftPressed = false;
         let rightPressed = false;
+        let isInvincible = false;
 
         document.addEventListener('keydown', handleKeyDown);
         document.addEventListener('keyup', handleKeyUp);
@@ -114,19 +136,23 @@
             gameContainer.appendChild(obstacle);
 
             let obstaclePosition = -40;
+            let speed = 5 + level;
+
             function moveObstacle() {
                 if (obstaclePosition > 400) {
                     gameContainer.removeChild(obstacle);
-                    score++;
-                    scoreElement.textContent = `Score: ${score}`;
+                    updateScore(10 * multiplier);
+                    consecutiveAvoids++;
+                    updateMultiplier();
                 } else if (
                     obstaclePosition > 300 &&
                     obstaclePosition < 360 &&
-                    Math.abs(carPosition - parseInt(obstacle.style.left)) < 40
+                    Math.abs(carPosition - parseInt(obstacle.style.left)) < 40 &&
+                    !isInvincible
                 ) {
                     gameOver();
                 } else {
-                    obstaclePosition += 5;
+                    obstaclePosition += speed;
                     obstacle.style.top = obstaclePosition + 'px';
                     if (gameRunning) {
                         requestAnimationFrame(moveObstacle);
@@ -134,6 +160,70 @@
                 }
             }
             requestAnimationFrame(moveObstacle);
+        }
+
+        function createPowerUp() {
+            if (!gameRunning) return;
+
+            const powerup = document.createElement('div');
+            powerup.classList.add('powerup');
+            powerup.style.left = Math.floor(Math.random() * 260) + 'px';
+            gameContainer.appendChild(powerup);
+
+            let powerupPosition = -30;
+            function movePowerUp() {
+                if (powerupPosition > 400) {
+                    gameContainer.removeChild(powerup);
+                } else if (
+                    powerupPosition > 300 &&
+                    powerupPosition < 360 &&
+                    Math.abs(carPosition - parseInt(powerup.style.left)) < 40
+                ) {
+                    gameContainer.removeChild(powerup);
+                    activateInvincibility();
+                } else {
+                    powerupPosition += 5;
+                    powerup.style.top = powerupPosition + 'px';
+                    if (gameRunning) {
+                        requestAnimationFrame(movePowerUp);
+                    }
+                }
+            }
+            requestAnimationFrame(movePowerUp);
+        }
+
+        function activateInvincibility() {
+            isInvincible = true;
+            car.style.opacity = '0.5';
+            setTimeout(() => {
+                isInvincible = false;
+                car.style.opacity = '1';
+            }, 5000);
+        }
+
+        function updateScore(points) {
+            score += points;
+            scoreElement.textContent = `Score: ${score}`;
+            if (score > highScore) {
+                highScore = score;
+                highScoreElement.textContent = `High Score: ${highScore}`;
+            }
+            updateLevel();
+        }
+
+        function updateLevel() {
+            let newLevel = Math.floor(score / 100) + 1;
+            if (newLevel > level) {
+                level = newLevel;
+                levelElement.textContent = `Level: ${level}`;
+            }
+        }
+
+        function updateMultiplier() {
+            if (consecutiveAvoids % 5 === 0) {
+                multiplier = Math.min(5, multiplier + 1);
+            }
+            multiplierElement.textContent = `Multiplier: x${multiplier}`;
         }
 
         function gameOver() {
@@ -144,17 +234,45 @@
         function restartGame() {
             gameRunning = true;
             score = 0;
+            level = 1;
+            multiplier = 1;
+            consecutiveAvoids = 0;
             scoreElement.textContent = 'Score: 0';
+            levelElement.textContent = 'Level: 1';
+            multiplierElement.textContent = 'Multiplier: x1';
             gameOverElement.style.display = 'none';
             carPosition = 130;
             car.style.left = carPosition + 'px';
-            document.querySelectorAll('.obstacle').forEach(obs => obs.remove());
+            document.querySelectorAll('.obstacle, .powerup').forEach(el => el.remove());
             requestAnimationFrame(moveCar);
-            setInterval(createObstacle, 2000);
+            startObstacleGeneration();
+            startPowerUpGeneration();
+        }
+
+        function startObstacleGeneration() {
+            createObstacle();
+            let interval = setInterval(() => {
+                if (!gameRunning) {
+                    clearInterval(interval);
+                } else {
+                    createObstacle();
+                }
+            }, 2000 / level);
+        }
+
+        function startPowerUpGeneration() {
+            let interval = setInterval(() => {
+                if (!gameRunning) {
+                    clearInterval(interval);
+                } else {
+                    createPowerUp();
+                }
+            }, 10000);
         }
 
         requestAnimationFrame(moveCar);
-        setInterval(createObstacle, 2000);
+        startObstacleGeneration();
+        startPowerUpGeneration();
     </script>
 </body>
 </html>
